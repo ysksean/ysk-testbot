@@ -6,13 +6,33 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SYSTEM_PROMPT = """당신은 친근한 한국어 일정 관리 비서입니다.
+SYSTEM_PROMPT = f"""당신은 친근한 한국어 일정 관리 비서입니다.
+오늘 날짜: {date.today().isoformat()}
 사용자의 일정을 조회하거나 추가하는 것을 도와줍니다.
 항상 간결하고 자연스러운 한국어로 답변하세요.
-중요: 일정 추가/수정/삭제는 시스템이 직접 처리합니다. 당신이 직접 일정을 추가했다고 말하지 마세요.
-일정 추가 요청이 오면 "일정을 추가해드릴게요!" 정도로만 말하세요."""
+일정 추가가 필요하면 반드시 create_calendar_event 함수를 호출하세요.
+종료 시간이 언급되지 않으면 시작 시간 +1시간으로 설정하세요."""
 
 MODEL = "llama-3.1-8b-instant"
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "create_calendar_event",
+            "description": "구글 캘린더에 일정을 추가합니다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "일정 제목"},
+                    "start_time": {"type": "string", "description": "시작 시간 (YYYY-MM-DDTHH:MM:00)"},
+                    "end_time": {"type": "string", "description": "종료 시간 (YYYY-MM-DDTHH:MM:00)"},
+                },
+                "required": ["title", "start_time", "end_time"],
+            },
+        },
+    }
+]
 
 
 class GeminiClient:
@@ -20,7 +40,7 @@ class GeminiClient:
         self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
         self.histories: dict[int, list] = {}
 
-    def chat(self, user_id: int, message: str, calendar_context: str = "") -> str:
+    def chat(self, user_id: int, message: str, calendar_context: str = "") -> tuple[str, dict | None]:
         if user_id not in self.histories:
             self.histories[user_id] = []
 
@@ -35,37 +55,33 @@ class GeminiClient:
         response = self.client.chat.completions.create(
             model=MODEL,
             messages=messages,
+            tools=TOOLS,
+            tool_choice="auto",
         )
-        reply = response.choices[0].message.content
+
+        choice = response.choices[0]
+        event_args = None
+
+        if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
+            tool_call = choice.message.tool_calls[0]
+            event_args = json.loads(tool_call.function.arguments)
+
+            messages.append(choice.message)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": "일정 추가 요청을 처리합니다.",
+            })
+
+            follow_up = self.client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+            )
+            reply = follow_up.choices[0].message.content
+        else:
+            reply = choice.message.content
 
         self.histories[user_id].append({"role": "user", "content": full_message})
         self.histories[user_id].append({"role": "assistant", "content": reply})
 
-        return reply
-
-    def parse_event(self, message: str) -> dict | None:
-        today = date.today().isoformat()
-        prompt = f"""오늘 날짜: {today}
-다음 메시지에서 일정 정보를 JSON으로 추출하세요.
-반드시 아래 형식만 반환하고 다른 텍스트는 넣지 마세요.
-일정 정보가 불충분하면 null을 반환하세요.
-종료 시간이 없으면 시작 시간 +1시간으로 설정하세요.
-
-형식:
-{{"title": "일정 제목", "start_time": "YYYY-MM-DDTHH:MM:00", "end_time": "YYYY-MM-DDTHH:MM:00"}}
-
-메시지: {message}"""
-
-        try:
-            response = self.client.chat.completions.create(
-                model=MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-            )
-            text = response.choices[0].message.content.strip().strip("```json").strip("```").strip()
-            if text == "null":
-                return None
-            return json.loads(text)
-        except Exception as e:
-            print(f"[parse_event 오류] {e}")
-            return None
+        return reply, event_args
