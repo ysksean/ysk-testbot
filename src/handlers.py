@@ -6,9 +6,16 @@ from src.calendar_client import CalendarClient
 gemini = GeminiClient()
 calendar = CalendarClient()
 
+ALLOWED_USER_IDS = {7879554126}
+
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+
+    if user_id not in ALLOWED_USER_IDS:
+        await update.message.reply_text("접근 권한이 없습니다.")
+        return
+
     user_text = update.message.text
 
     await update.message.chat.send_action("typing")
