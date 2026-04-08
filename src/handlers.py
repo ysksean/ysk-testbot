@@ -6,7 +6,9 @@ from src.calendar_client import CalendarClient
 gemini = GeminiClient()
 calendar = CalendarClient()
 
-ALLOWED_USER_IDS = {7879554126}
+import os
+_raw = os.getenv("ALLOWED_USER_IDS", "")
+ALLOWED_USER_IDS = {int(uid) for uid in _raw.split(",") if uid.strip()}
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
