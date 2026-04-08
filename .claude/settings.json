@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -m black \"$CLAUDE_FILE_PATHS\" --quiet 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
