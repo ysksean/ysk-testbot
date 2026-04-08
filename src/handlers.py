@@ -13,7 +13,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.chat.send_action("typing")
 
-    events = calendar.get_events(days=14)
+    events = calendar.get_events(days=60)
     if events:
         lines = [f"- [ID:{e['id']}] {e['start']}: {e['title']}" for e in events]
         calendar_context = "현재 등록된 일정:\n" + "\n".join(lines)
