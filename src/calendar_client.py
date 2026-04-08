@@ -42,7 +42,7 @@ class CalendarClient:
 
         return build("calendar", "v3", credentials=creds)
 
-    def get_events(self, days: int = 7) -> list[str]:
+    def get_events(self, days: int = 14) -> list[dict]:
         now = datetime.now(timezone.utc).isoformat()
         end = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
 
@@ -59,13 +59,17 @@ class CalendarClient:
             .execute()
         )
 
-        events = result.get("items", [])
-        formatted = []
-        for e in events:
+        events = []
+        for e in result.get("items", []):
             start = e["start"].get("dateTime", e["start"].get("date", ""))
-            title = e.get("summary", "제목 없음")
-            formatted.append(f"- {start}: {title}")
-        return formatted
+            end_time = e["end"].get("dateTime", e["end"].get("date", ""))
+            events.append({
+                "id": e["id"],
+                "title": e.get("summary", "제목 없음"),
+                "start": start,
+                "end": end_time,
+            })
+        return events
 
     def create_event(self, title: str, start_time: str, end_time: str) -> bool:
         event = {
@@ -78,4 +82,25 @@ class CalendarClient:
             return True
         except Exception as e:
             print(f"[create_event 오류] {e}")
+            return False
+
+    def delete_event(self, event_id: str) -> bool:
+        try:
+            self.service.events().delete(calendarId=self.calendar_id, eventId=event_id).execute()
+            return True
+        except Exception as e:
+            print(f"[delete_event 오류] {e}")
+            return False
+
+    def update_event(self, event_id: str, title: str, start_time: str, end_time: str) -> bool:
+        event = {
+            "summary": title,
+            "start": {"dateTime": start_time, "timeZone": "Asia/Seoul"},
+            "end": {"dateTime": end_time, "timeZone": "Asia/Seoul"},
+        }
+        try:
+            self.service.events().update(calendarId=self.calendar_id, eventId=event_id, body=event).execute()
+            return True
+        except Exception as e:
+            print(f"[update_event 오류] {e}")
             return False

@@ -14,19 +14,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action("typing")
 
     events = calendar.get_events(days=14)
-    calendar_context = "현재 등록된 일정:\n" + "\n".join(events) if events else "등록된 일정 없음"
+    if events:
+        lines = [f"- [ID:{e['id']}] {e['start']}: {e['title']}" for e in events]
+        calendar_context = "현재 등록된 일정:\n" + "\n".join(lines)
+    else:
+        calendar_context = "등록된 일정 없음"
 
-    reply, event_args = gemini.chat(user_id, user_text, calendar_context)
+    reply, tool_name, tool_args = gemini.chat(user_id, user_text, calendar_context)
 
-    if event_args:
+    if tool_name == "create_calendar_event":
         result = calendar.create_event(
-            title=event_args["title"],
-            start_time=event_args["start_time"],
-            end_time=event_args["end_time"],
+            title=tool_args["title"],
+            start_time=tool_args["start_time"],
+            end_time=tool_args["end_time"],
         )
-        if result:
-            reply += f"\n\n✅ 캘린더에 [{event_args['title']}] 추가 완료!"
-        else:
-            reply += f"\n\n❌ 캘린더 추가에 실패했어요. 다시 시도해주세요."
+        reply += f"\n\n✅ [{tool_args['title']}] 추가 완료!" if result else "\n\n❌ 추가 실패"
+
+    elif tool_name == "delete_calendar_event":
+        result = calendar.delete_event(event_id=tool_args["event_id"])
+        reply += f"\n\n🗑️ [{tool_args['title']}] 삭제 완료!" if result else "\n\n❌ 삭제 실패"
+
+    elif tool_name == "update_calendar_event":
+        result = calendar.update_event(
+            event_id=tool_args["event_id"],
+            title=tool_args["title"],
+            start_time=tool_args["start_time"],
+            end_time=tool_args["end_time"],
+        )
+        reply += f"\n\n✏️ [{tool_args['title']}] 수정 완료!" if result else "\n\n❌ 수정 실패"
 
     await update.message.reply_text(reply)

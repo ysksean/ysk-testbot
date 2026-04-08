@@ -25,7 +25,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "create_calendar_event",
-            "description": "구글 캘린더에 일정을 추가합니다.",
+            "description": "구글 캘린더에 새 일정을 추가합니다.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -36,7 +36,39 @@ TOOLS = [
                 "required": ["title", "start_time", "end_time"],
             },
         },
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_calendar_event",
+            "description": "구글 캘린더에서 일정을 삭제합니다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string", "description": "삭제할 일정의 ID"},
+                    "title": {"type": "string", "description": "삭제할 일정 제목 (확인용)"},
+                },
+                "required": ["event_id", "title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_calendar_event",
+            "description": "구글 캘린더의 기존 일정을 수정합니다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string", "description": "수정할 일정의 ID"},
+                    "title": {"type": "string", "description": "새 일정 제목"},
+                    "start_time": {"type": "string", "description": "새 시작 시간 (YYYY-MM-DDTHH:MM:00)"},
+                    "end_time": {"type": "string", "description": "새 종료 시간 (YYYY-MM-DDTHH:MM:00)"},
+                },
+                "required": ["event_id", "title", "start_time", "end_time"],
+            },
+        },
+    },
 ]
 
 
@@ -58,7 +90,7 @@ class GeminiClient:
         trimmed = history[-HISTORY_LIMIT:]
         self.redis.set(f"history:{user_id}", json.dumps(trimmed, ensure_ascii=False))
 
-    def chat(self, user_id: int, message: str, calendar_context: str = "") -> tuple[str, dict | None]:
+    def chat(self, user_id: int, message: str, calendar_context: str = "") -> tuple[str, str | None, dict | None]:
         history = self._get_history(user_id)
 
         full_message = message
@@ -77,17 +109,19 @@ class GeminiClient:
         )
 
         choice = response.choices[0]
-        event_args = None
+        tool_name = None
+        tool_args = None
 
         if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
             tool_call = choice.message.tool_calls[0]
-            event_args = json.loads(tool_call.function.arguments)
+            tool_name = tool_call.function.name
+            tool_args = json.loads(tool_call.function.arguments)
 
             messages.append(choice.message)
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
-                "content": "일정 추가 요청을 처리합니다.",
+                "content": "요청을 처리합니다.",
             })
 
             follow_up = self.client.chat.completions.create(
@@ -102,4 +136,4 @@ class GeminiClient:
         history.append({"role": "assistant", "content": reply})
         self._save_history(user_id, history)
 
-        return reply, event_args
+        return reply, tool_name, tool_args
