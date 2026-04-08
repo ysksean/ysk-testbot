@@ -1,5 +1,6 @@
 import os
 import json
+import redis
 from datetime import date
 from groq import Groq
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ SYSTEM_PROMPT = f"""당신은 친근한 한국어 일정 관리 비서입니다.
 종료 시간이 언급되지 않으면 시작 시간 +1시간으로 설정하세요."""
 
 MODEL = "llama-3.1-8b-instant"
+HISTORY_LIMIT = 20  # 저장할 최대 메시지 수
 
 TOOLS = [
     {
@@ -38,18 +40,30 @@ TOOLS = [
 class GeminiClient:
     def __init__(self):
         self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        self.histories: dict[int, list] = {}
+        redis_url = os.getenv("REDIS_URL")
+        self.redis = redis.from_url(redis_url) if redis_url else None
+
+    def _get_history(self, user_id: int) -> list:
+        if not self.redis:
+            return []
+        raw = self.redis.get(f"history:{user_id}")
+        return json.loads(raw) if raw else []
+
+    def _save_history(self, user_id: int, history: list):
+        if not self.redis:
+            return
+        trimmed = history[-HISTORY_LIMIT:]
+        self.redis.set(f"history:{user_id}", json.dumps(trimmed, ensure_ascii=False))
 
     def chat(self, user_id: int, message: str, calendar_context: str = "") -> tuple[str, dict | None]:
-        if user_id not in self.histories:
-            self.histories[user_id] = []
+        history = self._get_history(user_id)
 
         full_message = message
         if calendar_context:
             full_message = f"{calendar_context}\n\n사용자 질문: {message}"
 
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        messages += self.histories[user_id]
+        messages += history
         messages.append({"role": "user", "content": full_message})
 
         response = self.client.chat.completions.create(
@@ -81,7 +95,8 @@ class GeminiClient:
         else:
             reply = choice.message.content
 
-        self.histories[user_id].append({"role": "user", "content": full_message})
-        self.histories[user_id].append({"role": "assistant", "content": reply})
+        history.append({"role": "user", "content": full_message})
+        history.append({"role": "assistant", "content": reply})
+        self._save_history(user_id, history)
 
         return reply, event_args
