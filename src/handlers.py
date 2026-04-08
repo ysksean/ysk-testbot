@@ -6,6 +6,11 @@ from src.calendar_client import CalendarClient
 gemini = GeminiClient()
 calendar = CalendarClient()
 
+# 일정 조회 트리거
+QUERY_KEYWORDS = ["일정", "스케줄", "언제", "몇시", "예약"]
+# 일정 추가 트리거 (동사형으로만 - "추가한거" 같은 명사형 제외)
+ADD_KEYWORDS = ["추가해", "추가 해", "잡아줘", "등록해", "넣어줘", "만들어줘"]
+
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -14,14 +19,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action("typing")
 
     calendar_context = ""
-    if any(kw in user_text for kw in ["일정", "스케줄", "언제", "몇시", "추가", "잡아", "예약"]):
-        events = calendar.get_events(days=7)
+    if any(kw in user_text for kw in QUERY_KEYWORDS + ADD_KEYWORDS):
+        events = calendar.get_events(days=14)
         if events:
             calendar_context = "현재 등록된 일정:\n" + "\n".join(events)
 
     reply = gemini.chat(user_id, user_text, calendar_context)
 
-    if any(kw in user_text for kw in ["추가", "잡아", "등록", "넣어"]):
+    if any(kw in user_text for kw in ADD_KEYWORDS):
         parsed = gemini.parse_event(user_text)
         if parsed:
             result = calendar.create_event(
