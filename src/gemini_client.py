@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SYSTEM_PROMPT = f"""당신은 친근한 한국어 일정 관리 비서입니다.
-오늘 날짜: {date.today().isoformat()}
+SYSTEM_PROMPT = """당신은 친근한 한국어 일정 관리 비서입니다.
+오늘 날짜: {today}
 
 ## 규칙
 - 일정 조회/확인 요청 ("말해줘", "알려줘", "뭐야", "있어?") → 함수 호출 절대 금지, 텍스트로만 답변
@@ -106,7 +106,8 @@ class GeminiClient:
         if calendar_context:
             full_message = f"{calendar_context}\n\n사용자 질문: {message}"
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        today_prompt = SYSTEM_PROMPT.format(today=date.today().isoformat())
+        messages = [{"role": "system", "content": today_prompt}]
         messages += history
         messages.append({"role": "user", "content": full_message})
 
